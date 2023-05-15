@@ -9,13 +9,26 @@
 #include <cstddef>
 #include <iterator>
 #include <span>
+#include <ranges>
 #include <type_traits>
 #include <vector>
 
 namespace sendy {
 
+template<std::integral T>
+requires std::has_unique_object_representations_v<T>
+inline constexpr T revbytes(T val) noexcept {
+    auto buf = std::bit_cast<std::array<std::byte, sizeof(T)>>(val);
+    std::ranges::reverse(buf);
+    return std::bit_cast<T>(buf);
+}
+
+#if !defined(__SENDY_REVERSE_ENDIANNESS)
 /** @brief If the host's processor uses little endian byte order */
 constexpr bool is_host_le = (std::endian::native == std::endian::little);
+#else
+constexpr bool is_host_le = (std::endian::native != std::endian::little);
+#endif
 
 template<typename T, typename Raw>
 T sendynetorder(Raw host);
@@ -26,9 +39,7 @@ inline constexpr T sendynetorder(Raw host) noexcept {
     if constexpr(is_host_le) {
         return host;
     } else {
-        auto buf = std::bit_cast<std::array<std::byte, sizeof(T)>>(host);
-        std::ranges::reverse(buf);
-        return std::bit_cast<T>(buf);
+        return revbytes(host);
     }
 }
 
@@ -38,7 +49,8 @@ inline constexpr T sendynetorder(Raw host) noexcept {
  */
 template<std::integral T, std::ranges::bidirectional_range Raw>
 requires
-    std::has_unique_object_representations_v<std::ranges::range_value_t<Raw>>
+    std::same_as<std::ranges::range_value_t<Raw>, std::byte> &&
+    std::has_unique_object_representations_v<T>
 inline constexpr T sendynetorder(Raw host) noexcept {
     if constexpr(!is_host_le) {
         std::ranges::reverse(host);
@@ -47,13 +59,18 @@ inline constexpr T sendynetorder(Raw host) noexcept {
     if constexpr(std::convertible_to<Raw, std::array<std::byte, sizeof(T)>>) {
         return std::bit_cast<T>(host);
     } else {
-        T val;
-        for(std::size_t i = 0; std::byte byte : host) {
-            val |= (((T)byte) >> (i * 8));
-        }
-
-        return val;
+        auto iter = host | std::views::take(sizeof(T));
+        std::array<std::byte, sizeof(T)> array;
+        std::copy(std::begin(iter), std::end(iter), array.begin());
+        return std::bit_cast<T>(array);
     }
+}
+
+template<std::integral T>
+requires std::has_unique_object_representations_v<T>
+inline constexpr std::span<std::byte> consume(std::span<std::byte> bytes, T& out) {
+    out = sendynetorder<T>(bytes);
+    return bytes.subspan(sizeof(T));
 }
 
 template<std::integral T>
@@ -81,20 +98,19 @@ template<typename T>
 concept encodable = requires(T const& v) {
     { encoder<T>::encoded_sz() } noexcept -> std::convertible_to<std::size_t>;
 
-    { encoder<T>::read(example_val<const std::span<std::byte>>) } noexcept -> std::convertible_to<T>;
+    { encoder<T>::read(example_val<T&>, example_val<std::span<std::byte>>) } noexcept -> std::convertible_to<std::span<std::byte>>;
     { encoder<T>::write(v, example_val<std::vector<std::byte>&>) } noexcept;
 };
 
-template<> struct encoder<int> {
-    static inline std::size_t encoded_sz() noexcept { return sizeof(int); }
-
-    static int read(const std::span<std::byte> buf) noexcept {
-        auto me = buf.subspan(encoded_sz());
-        return sendynetorder<int>(me); 
+template<std::integral T>
+struct encoder<T> {
+    static inline std::size_t encoded_sz() noexcept { return sizeof(T); }
+    static constexpr std::span<std::byte> read(T& out, std::span<std::byte> buf) noexcept {
+        return consume(buf, out);
     }
 
-    static void write(int const& val, std::vector<std::byte>& buf) noexcept {
-        auto array = sendynetorder<std::array<std::byte, sizeof(int)>>(bytes(val));
+    static void write(T const& val, std::vector<std::byte>& buf) noexcept {
+        auto array = sendynetorder<std::array<std::byte, sizeof(T)>>(bytes(val));
         buf.insert(buf.end(), std::begin(array), std::end(array));
     }
 };
