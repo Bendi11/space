@@ -16,6 +16,10 @@
 
 namespace sendy {
 
+using std::pair;
+using std::byte;
+using std::array;
+
 template<std::integral T>
 requires std::has_unique_object_representations_v<T>
 inline constexpr T revbytes(T val) noexcept {
@@ -25,7 +29,7 @@ inline constexpr T revbytes(T val) noexcept {
 }
 
 template<std::size_t N>
-inline constexpr std::array<std::byte, N> revbytes(std::array<std::byte, N> bytes) noexcept {
+inline constexpr array<byte, N> revbytes(array<byte, N> bytes) noexcept {
     std::ranges::reverse(bytes);
     return bytes;
 }
@@ -50,18 +54,18 @@ inline constexpr T sendynetorder(T host) noexcept {
  */
 template<std::integral T, std::ranges::bidirectional_range Raw>
 requires
-    std::same_as<std::ranges::range_value_t<Raw>, std::byte> &&
+    std::same_as<std::ranges::range_value_t<Raw>, byte> &&
     std::has_unique_object_representations_v<T>
 inline constexpr T sendynetorder(Raw host) noexcept {
     if constexpr(!is_host_le) {
         std::ranges::reverse(host);
     }
 
-    if constexpr(std::convertible_to<Raw, std::array<std::byte, sizeof(T)>>) {
+    if constexpr(std::convertible_to<Raw, array<byte, sizeof(T)>>) {
         return std::bit_cast<T>(host);
     } else {
         auto iter = host | std::views::take(sizeof(T));
-        std::array<std::byte, sizeof(T)> array;
+        array<byte, sizeof(T)> array;
         std::copy(std::begin(iter), std::end(iter), array.begin());
         return std::bit_cast<T>(array);
     }
@@ -73,8 +77,8 @@ inline constexpr T sendynetorder(Raw host) noexcept {
  */
 template<std::integral T>
 requires std::has_unique_object_representations_v<T>
-inline constexpr std::array<std::byte, sizeof(T)> bytes(T val) noexcept {
-    return std::bit_cast<std::array<std::byte, sizeof(T)>>(val);
+inline constexpr array<byte, sizeof(T)> bytes(T val) noexcept {
+    return std::bit_cast<array<byte, sizeof(T)>>(val);
 }
 
 namespace _impl {
@@ -96,31 +100,31 @@ concept encodable = requires(T const& v) {
 
     {
         encoder<T>::read(
-            _impl::example_val<std::span<std::byte>>
+            _impl::example_val<std::span<byte>>
         )
-    } noexcept -> std::convertible_to<std::tuple<T, std::size_t>>;
+    } noexcept -> std::convertible_to<pair<T, std::size_t>>;
     {
         encoder<T>::write(
             v,
-            _impl::example_val<std::vector<std::byte>&>
+            _impl::example_val<std::vector<byte>&>
         )
     } noexcept;
 };
 
 /// Wrapper over `encoder<T>::read`
 template<encodable T>
-constexpr inline std::tuple<T, std::size_t> decode(std::span<std::byte> buf) {
+constexpr inline std::pair<T, std::size_t> decode(std::span<byte> buf) {
     return encoder<T>::read(buf);
 }
 
 /// Wrapper over `encoder<T>::write`
 template<encodable T>
-constexpr inline void encode(T const& val, std::vector<std::byte>& buf) {
+constexpr inline void encode(T const& val, std::vector<byte>& buf) {
     encoder<T>::write(val, buf);
 }
 
 template<encodable T>
-constexpr inline std::vector<std::byte> encode(T const& val) {
+constexpr inline std::vector<byte> encode(T const& val) {
     std::vector<std::byte> vec{};
     vec.reserve(encoder<T>::encoded_sz(val));
     encoder<T>::write(val, vec);
@@ -138,8 +142,8 @@ constexpr inline std::size_t encoded_size(T const& val) {
 template<std::integral T>
 struct encoder<T> {
     static inline std::size_t encoded_sz(int const&) noexcept { return sizeof(T); }
-    static constexpr std::pair<T, std::size_t> read(std::span<std::byte> buf) noexcept {
-        return std::pair(sendynetorder<T>(buf), sizeof(T));
+    static constexpr pair<T, size_t> read(std::span<std::byte> buf) noexcept {
+        return pair(sendynetorder<T>(buf), sizeof(T));
     }
 
     static void write(T const& val, std::vector<std::byte>& buf) noexcept {
@@ -163,7 +167,7 @@ struct encoder<std::vector<T>> {
         return size;
     }
 
-    static constexpr std::pair<std::vector<T>, std::size_t> read(std::span<std::byte> buf) noexcept {
+    static constexpr pair<std::vector<T>, std::size_t> read(std::span<byte> buf) noexcept {
         std::size_t read = 0;
         std::size_t size = 0;
 
@@ -184,10 +188,10 @@ struct encoder<std::vector<T>> {
             vec.push_back(val);
         }
 
-        return std::pair(vec, size);
+        return pair(vec, size);
     }
 
-    static constexpr void write(std::vector<T> const& val, std::vector<std::byte>& buf) noexcept {
+    static constexpr void write(std::vector<T> const& val, std::vector<byte>& buf) noexcept {
         len_t len = val.size();
         encode(len, buf);
         for(auto const& element : val) {
