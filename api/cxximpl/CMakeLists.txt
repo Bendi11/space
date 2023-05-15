@@ -23,8 +23,6 @@ file(GLOB_RECURSE TEST_FILES
     "${PROJECT_SOURCE_DIR}/src/tests/*.cpp"
 )
 
-message("HERE ${TEST_FILES}")
-
 add_executable(
     ${TESTS}
     ${SRC}
