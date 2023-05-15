@@ -24,12 +24,18 @@ inline constexpr T revbytes(T val) noexcept {
     return std::bit_cast<T>(buf);
 }
 
+template<std::size_t N>
+inline constexpr std::array<std::byte, N> revbytes(std::array<std::byte, N> bytes) noexcept {
+    std::ranges::reverse(bytes);
+    return bytes;
+}
+
 /** @brief If the host's processor uses little endian byte order */
 constexpr bool is_host_le = (std::endian::native == std::endian::little);
 
 /// Conver the given value of native byte ordering to sendy's network byte ordering,
 /// or convert a value of sendy's byte ordering to native
-template<std::integral T>
+template<typename T>
 inline constexpr T sendynetorder(T host) noexcept {
     if constexpr(is_host_le) {
         return host;
@@ -92,7 +98,7 @@ concept encodable = requires(T const& v) {
         encoder<T>::read(
             _impl::example_val<std::span<std::byte>>
         )
-    } noexcept -> std::convertible_to<T>;
+    } noexcept -> std::convertible_to<std::tuple<T, std::size_t>>;
     {
         encoder<T>::write(
             v,
@@ -103,14 +109,27 @@ concept encodable = requires(T const& v) {
 
 /// Wrapper over `encoder<T>::read`
 template<encodable T>
-constexpr inline T decode(std::span<std::byte> buf) {
+constexpr inline std::tuple<T, std::size_t> decode(std::span<std::byte> buf) {
     return encoder<T>::read(buf);
 }
 
 /// Wrapper over `encoder<T>::write`
-template<typename T>
+template<encodable T>
 constexpr inline void encode(T const& val, std::vector<std::byte>& buf) {
     encoder<T>::write(val, buf);
+}
+
+template<encodable T>
+constexpr inline std::vector<std::byte> encode(T const& val) {
+    std::vector<std::byte> vec{};
+    vec.reserve(encoder<T>::encoded_sz(val));
+    encoder<T>::write(val, vec);
+    return vec;
+}
+
+template<encodable T>
+constexpr inline std::size_t encoded_size(T const& val) {
+    return encoder<T>::encoded_sz(val);
 }
 
 /**
@@ -119,12 +138,12 @@ constexpr inline void encode(T const& val, std::vector<std::byte>& buf) {
 template<std::integral T>
 struct encoder<T> {
     static inline std::size_t encoded_sz(int const&) noexcept { return sizeof(T); }
-    static constexpr T read(std::span<std::byte> buf) noexcept {
-        return sendynetorder<T>(buf);
+    static constexpr std::pair<T, std::size_t> read(std::span<std::byte> buf) noexcept {
+        return std::pair(sendynetorder<T>(buf), sizeof(T));
     }
 
     static void write(T const& val, std::vector<std::byte>& buf) noexcept {
-        auto array = sendynetorder<std::array<std::byte, sizeof(T)>>(bytes(val));
+        auto array = sendynetorder(bytes(val));
         buf.insert(buf.end(), std::begin(array), std::end(array));
     }
 };
@@ -137,19 +156,46 @@ struct encoder<std::vector<T>> {
     using len_t = std::uint32_t;
 
     static inline constexpr std::size_t encoded_sz(std::vector<T> const& vec) noexcept {
-        return sizeof(len_t) + encoder<T>::encoded_sz() * vec.size();
+        std::size_t size = encoded_size<len_t>(vec.size());
+        for(auto const& val : vec) {
+            size += encoded_size<T>(val);
+        }
+        return size;
     }
 
-    static constexpr T read(std::span<std::byte> buf) noexcept {
-        len_t len = decode<len_t>(buf);
-        buf = buf.subspan(encoder<len_t>::encoded_sz(len));
+    static constexpr std::pair<std::vector<T>, std::size_t> read(std::span<std::byte> buf) noexcept {
+        std::size_t read = 0;
+        std::size_t size = 0;
+
+        len_t len;
+        std::tie(len, read) = decode<len_t>(buf);
+        buf = buf.subspan(read);
+        size += read;
+
         std::vector<T> vec{};
         vec.reserve(len);
         
         for(len_t i = 0; i < len; ++i) {
-            
+            T val;
+            std::tie(val, read) = decode<T>(buf);
+            buf = buf.subspan(read);
+            size += read;
+
+            vec.push_back(val);
+        }
+
+        return std::pair(vec, size);
+    }
+
+    static constexpr void write(std::vector<T> const& val, std::vector<std::byte>& buf) noexcept {
+        len_t len = val.size();
+        encode(len, buf);
+        for(auto const& element : val) {
+            encode(element, buf);
         }
     }
 };
+
+static_assert(encodable<std::vector<int>>);
 
 }
