@@ -119,12 +119,12 @@ constexpr inline std::pair<T, std::size_t> decode(std::span<byte> buf) {
 
 /// Wrapper over `encoder<T>::write`
 template<encodable T>
-constexpr inline void encode(T const& val, std::vector<byte>& buf) {
+constexpr inline void encode(T const& val, std::vector<byte>& buf) noexcept {
     encoder<T>::write(val, buf);
 }
 
 template<encodable T>
-constexpr inline std::vector<byte> encode(T const& val) {
+constexpr inline std::vector<byte> encode(T const& val) noexcept {
     std::vector<std::byte> vec{};
     vec.reserve(encoder<T>::encoded_sz(val));
     encoder<T>::write(val, vec);
@@ -132,7 +132,7 @@ constexpr inline std::vector<byte> encode(T const& val) {
 }
 
 template<encodable T>
-constexpr inline std::size_t encoded_size(T const& val) {
+constexpr inline std::size_t encoded_size(T const& val) noexcept {
     return encoder<T>::encoded_sz(val);
 }
 
@@ -200,6 +200,10 @@ struct encoder<std::vector<T>> {
     }
 };
 
+/**
+ * Encoder specialization that encodes an std::string as a length and
+ * a sequence of ASCII characters
+ */
 template<>
 struct encoder<std::string> {
     using len_t = std::uint32_t;
@@ -235,6 +239,63 @@ struct encoder<T> {
     static inline constexpr std::size_t encoded_sz(T const& val) noexcept { return sizeof(underlying); }
     static pair<T, std::size_t> read(std::span<byte> span) noexcept { return T{decode<underlying>(span)}; }
     static void write(T const& val, std::vector<byte>& buf) noexcept { encode<underlying>(static_cast<underlying>(val)); }
+};
+
+template<typename Fn, typename Val, typename... Args>
+concept producer = requires(Fn f, Args&&... args) {
+    { f(args...) } -> std::convertible_to<Val>;
+};
+
+
+/** @brief Concept for types that can be easily encoded using a single `encode` template */
+template<typename T>
+concept easyencodable = requires(T& ref, T const& cref) {
+    {
+        ref.template encode<[](auto const&... args){ }>()
+    };
+};
+
+/**
+ * @brief Encoder implementation for types that satisfy the `easyencodable` concept
+ */
+template<easyencodable T>
+struct encoder<T> {
+    static inline constexpr std::size_t encoded_sz(T const& val) noexcept {
+        const auto sizes = [](auto const&... args) { return (... + encoded_size<decltype(args)>(args)); };
+        return val.template encode<sizes>();
+    }
+
+    static inline pair<T, std::size_t> read(std::span<byte> span) noexcept {
+        std::size_t size = 0;
+
+        static const auto parser = [&](auto&... args) {(
+            (
+                [&] {
+                    auto [val, read] = decode<decltype(args)>(span);
+                    size += read;
+                    span = span.subspan(read);
+                    args = val;
+                }
+            )(), ...
+        );};
+
+        T val;
+        val.template encode<parser>();
+        return pair(val, size);
+    }
+
+    static inline void write(T const& val, std::vector<byte>& buf) noexcept {
+        static const auto writer = [&](auto const&... args) {(
+            (
+                [&] {
+                    encode(args, buf);
+                }
+            )(), ...
+        );};
+
+        val.template encode<writer>();
+    }
+private:
 };
 
 }
