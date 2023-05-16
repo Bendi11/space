@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <ranges>
 #include <type_traits>
@@ -237,13 +238,11 @@ struct encoder<T> {
     using underlying = typename std::underlying_type<T>::type;
 
     static inline constexpr std::size_t encoded_sz(T const& val) noexcept { return sizeof(underlying); }
-    static pair<T, std::size_t> read(std::span<byte> span) noexcept { return T{decode<underlying>(span)}; }
+    static pair<T, std::size_t> read(std::span<byte> span) noexcept {
+        auto [val, read] = decode<underlying>(span);
+        return pair(T{val}, read);
+    }
     static void write(T const& val, std::vector<byte>& buf) noexcept { encode<underlying>(static_cast<underlying>(val)); }
-};
-
-template<typename Fn, typename Val, typename... Args>
-concept producer = requires(Fn f, Args&&... args) {
-    { f(args...) } -> std::convertible_to<Val>;
 };
 
 
@@ -251,7 +250,7 @@ concept producer = requires(Fn f, Args&&... args) {
 template<typename T>
 concept easyencodable = requires(T& ref, T const& cref) {
     {
-        ref.template encode<[](auto const&... args){ }>()
+        ref.encode([](auto&...){})
     };
 };
 
@@ -261,8 +260,8 @@ concept easyencodable = requires(T& ref, T const& cref) {
 template<easyencodable T>
 struct encoder<T> {
     static inline constexpr std::size_t encoded_sz(T const& val) noexcept {
-        const auto sizes = [](auto const&... args) { return (... + encoded_size<decltype(args)>(args)); };
-        return val.template encode<sizes>();
+        const auto sizes = [](auto const&... args) { return (... + encoded_size<std::decay_t<decltype(args)>>(args)); };
+        return const_cast<T&>(val).encode(sizes);
     }
 
     static inline pair<T, std::size_t> read(std::span<byte> span) noexcept {
@@ -271,21 +270,21 @@ struct encoder<T> {
         static const auto parser = [&](auto&... args) {(
             (
                 [&] {
-                    auto [val, read] = decode<decltype(args)>(span);
+                    auto [val, read] = decode<std::decay_t<decltype(args)>>(span);
                     size += read;
                     span = span.subspan(read);
-                    args = val;
+                    (*(std::addressof(args))) = val;
                 }
             )(), ...
         );};
 
-        T val;
-        val.template encode<parser>();
+        T val = std::bit_cast<T>(std::array<byte, sizeof(T)>());
+        val.encode(parser);
         return pair(val, size);
     }
 
     static inline void write(T const& val, std::vector<byte>& buf) noexcept {
-        static const auto writer = [&](auto const&... args) {(
+        static const auto writer = [&](auto&... args) {(
             (
                 [&] {
                     encode(args, buf);
@@ -293,7 +292,7 @@ struct encoder<T> {
             )(), ...
         );};
 
-        val.template encode<writer>();
+        const_cast<T&>(val).encode(writer);
     }
 private:
 };

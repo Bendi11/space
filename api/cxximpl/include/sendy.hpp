@@ -13,25 +13,11 @@ enum class PacketKind : std::uint8_t  {
 
 typedef std::uint64_t packetid;
 
-template<typename... Fields>
-struct fields {
-    using tuple = std::tuple<Fields...>;
-
-    constexpr void operator()(Fields&&... fields) {
-        
-    }
-};
-
-template<typename... Fields>
-struct any {
-    static constexpr bool value = ( ... || std::is_same_v<Fields, int>);
-};
-
 struct PacketHeader {
     packetid id;
     PacketKind kind;
 
-    template<auto packer> constexpr auto encode() { packer(id, kind); }
+    inline constexpr auto encode(auto packer) { return packer(id, kind); }
 };
 
 static_assert(encodable<PacketHeader>);
