@@ -35,11 +35,11 @@ TEST_CASE("encoding and decoding", "[encoding]") {
     }
 
     SECTION("encoding easyencodable structs") {
-        PacketHeader header;
+        packet_header header;
         header.id = 3;
-        header.kind = PacketKind::Connect;
+        header.kind = packet_kind::Connect;
 
         auto buf = encode(header);
-        auto decoded = decode<PacketHeader>(buf);
+        auto decoded = decode<packet_header>(buf);
     }
 }

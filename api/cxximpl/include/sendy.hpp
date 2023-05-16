@@ -7,19 +7,19 @@
 
 namespace sendy {
 
-enum class PacketKind : std::uint8_t  {
+enum class packet_kind : std::uint8_t  {
     Connect = 1,
 };
 
 typedef std::uint64_t packetid;
 
-struct PacketHeader {
+struct packet_header {
     packetid id;
-    PacketKind kind;
+    packet_kind kind;
 
     inline constexpr auto encode(auto packer) { return packer(id, kind); }
 };
 
-static_assert(encodable<PacketHeader>);
+static_assert(encodable<packet_header>);
 
 }

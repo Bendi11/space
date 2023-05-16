@@ -21,20 +21,6 @@ using std::pair;
 using std::byte;
 using std::array;
 
-template<std::integral T>
-requires std::has_unique_object_representations_v<T>
-inline constexpr T revbytes(T val) noexcept {
-    auto buf = std::bit_cast<std::array<std::byte, sizeof(T)>>(val);
-    std::ranges::reverse(buf);
-    return std::bit_cast<T>(buf);
-}
-
-template<std::size_t N>
-inline constexpr array<byte, N> revbytes(array<byte, N> bytes) noexcept {
-    std::ranges::reverse(bytes);
-    return bytes;
-}
-
 /** @brief If the host's processor uses little endian byte order */
 constexpr bool is_host_le = (std::endian::native == std::endian::little);
 
@@ -45,7 +31,9 @@ inline constexpr T sendynetorder(T host) noexcept {
     if constexpr(is_host_le) {
         return host;
     } else {
-        return revbytes(host);
+        auto buf = std::bit_cast<std::array<std::byte, sizeof(T)>>(host);
+        std::ranges::reverse(buf);
+        return std::bit_cast<T>(buf);
     }
 }
 
@@ -124,7 +112,9 @@ constexpr inline void encode(T const& val, std::vector<byte>& buf) noexcept {
     encoder<T>::write(val, buf);
 }
 
+/** @brief Wrapper over `encoder<T>::write` */
 template<encodable T>
+[[nodiscard("Encode with no buf argument creates a vector of bytes")]]
 constexpr inline std::vector<byte> encode(T const& val) noexcept {
     std::vector<std::byte> vec{};
     vec.reserve(encoder<T>::encoded_sz(val));
@@ -132,6 +122,7 @@ constexpr inline std::vector<byte> encode(T const& val) noexcept {
     return vec;
 }
 
+/** @brief Wrapper over `encoder<T>::encoded_sz` */
 template<encodable T>
 constexpr inline std::size_t encoded_size(T const& val) noexcept {
     return encoder<T>::encoded_sz(val);
@@ -242,7 +233,9 @@ struct encoder<T> {
         auto [val, read] = decode<underlying>(span);
         return pair(T{val}, read);
     }
-    static void write(T const& val, std::vector<byte>& buf) noexcept { encode<underlying>(static_cast<underlying>(val)); }
+    static void write(T const& val, std::vector<byte>& buf) noexcept {
+        encode<underlying>(static_cast<underlying>(val), buf);
+    }
 };
 
 
