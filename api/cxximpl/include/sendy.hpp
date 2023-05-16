@@ -1,7 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <concepts>
-#include <vector>
 
 #include "sendy/encode.hpp"
 

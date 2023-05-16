@@ -70,11 +70,6 @@ inline constexpr array<byte, sizeof(T)> bytes(T val) noexcept {
     return std::bit_cast<array<byte, sizeof(T)>>(val);
 }
 
-namespace _impl {
-    template<typename T>
-    constexpr T example_val = *(T*)(nullptr);
-}
-
 /** @brief Type to be specialized for a given type `T`, providing methods to encode and decode values */
 template<typename T>
 struct encoder;
@@ -89,13 +84,13 @@ concept encodable = requires(T const& v) {
 
     {
         encoder<T>::read(
-            _impl::example_val<std::span<byte>>
+            std::declval<std::span<byte>>()
         )
     } noexcept -> std::convertible_to<pair<T, std::size_t>>;
     {
         encoder<T>::write(
             v,
-            _impl::example_val<std::vector<byte>&>
+            std::declval<std::vector<byte>&>()
         )
     } noexcept;
 };
