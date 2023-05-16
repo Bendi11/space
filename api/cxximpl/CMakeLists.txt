@@ -22,13 +22,9 @@ add_library(
 
 target_include_directories(${object} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-file(GLOB_RECURSE TEST_FILES
-    "${PROJECT_SOURCE_DIR}/src/tests/*.cpp"
-)
-
 add_executable(
     ${TESTS}
-    ${TEST_FILES}
+    "src/tests/encoding.cpp"
 )
 
 Include(FetchContent)

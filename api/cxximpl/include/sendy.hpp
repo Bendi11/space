@@ -16,6 +16,7 @@ struct packet_header {
     packet_kind kind;
 
     inline constexpr auto encode(auto packer) { return packer(id, kind); }
+    inline constexpr bool operator==(packet_header const&) const = default;
 };
 
 static_assert(encodable<packet_header>);
