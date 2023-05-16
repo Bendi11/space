@@ -26,5 +26,9 @@ TEST_CASE("encoding and decoding", "[encoding]") {
         std::tie(decoded_longs, read) = sendy::decode<std::vector<long>>(span);
         REQUIRE(decoded_ints == o_ints);
         REQUIRE(decoded_longs == o_longs);
+
+        std::string str = "hello, world!";
+        buf = sendy::encode(str);
+        REQUIRE(sendy::decode<std::string>(buf).first == str);
     }
 }

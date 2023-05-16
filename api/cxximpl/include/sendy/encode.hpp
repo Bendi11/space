@@ -200,6 +200,41 @@ struct encoder<std::vector<T>> {
     }
 };
 
-static_assert(encodable<std::vector<int>>);
+template<>
+struct encoder<std::string> {
+    using len_t = std::uint32_t;
+
+    static inline constexpr std::size_t encoded_sz(std::string const& val) noexcept {
+        return encoded_size<len_t>(val.size()) + val.size();
+    }
+
+    static pair<std::string, std::size_t> read(std::span<byte> span) noexcept {
+        std::size_t size = 0;
+        auto [len, read] = decode<len_t>(span);
+        span = span.subspan(read);
+        size += read + len;
+
+        return pair(std::string(reinterpret_cast<const char*>(span.data()), len), size);
+    }
+
+    static void write(std::string const& val, std::vector<byte>& buf) noexcept {
+        encode<len_t>(val.size(), buf);
+        auto data = reinterpret_cast<const byte*>(val.data());
+        std::copy(data, data + val.size(), std::back_inserter(buf));
+    }
+};
+
+/**
+ * Encoder specialization that can convert scoped enumerations to their underlying representation before encoding
+ */
+template<typename T>
+requires std::is_enum_v<T>
+struct encoder<T> {
+    using underlying = typename std::underlying_type<T>::type;
+
+    static inline constexpr std::size_t encoded_sz(T const& val) noexcept { return sizeof(underlying); }
+    static pair<T, std::size_t> read(std::span<byte> span) noexcept { return T{decode<underlying>(span)}; }
+    static void write(T const& val, std::vector<byte>& buf) noexcept { encode<underlying>(static_cast<underlying>(val)); }
+};
 
 }
