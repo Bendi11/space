@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(
-    sendycxx
+    sendy
     LANGUAGES CXX
 )
 
@@ -27,15 +27,6 @@ add_executable(
     "src/tests/encoding.cpp"
 )
 
-Include(FetchContent)
-
-FetchContent_Declare(
-  Catch2
-  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG        v3.3.2
-)
-
-FetchContent_MakeAvailable(Catch2)
 
 target_link_libraries(${TESTS} PRIVATE ${object} Catch2::Catch2WithMain)
 

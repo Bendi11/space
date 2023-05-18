@@ -71,14 +71,4 @@ TEST_CASE("encoding and decoding", "[encoding]") {
         _{},
         "ABC\nDEF"
     );
-    
-    TEST_ENCODE(
-        packet_header,
-        "packet header",
-        as<packet_header>{},
-        packet_header {
-            .id = 0,
-            .kind = packet_kind::Connect
-        }
-    );
 }

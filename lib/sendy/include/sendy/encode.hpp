@@ -27,6 +27,7 @@ constexpr bool is_host_le = (std::endian::native == std::endian::little);
 /// Conver the given value of native byte ordering to sendy's network byte ordering,
 /// or convert a value of sendy's byte ordering to native
 template<typename T>
+[[nodiscard]]
 inline constexpr T sendynetorder(T host) noexcept {
     if constexpr(is_host_le) {
         return host;
@@ -45,6 +46,7 @@ template<std::integral T, std::ranges::bidirectional_range Raw>
 requires
     std::same_as<std::ranges::range_value_t<Raw>, byte> &&
     std::has_unique_object_representations_v<T>
+[[nodiscard]]
 inline constexpr T sendynetorder(Raw host) noexcept {
     if constexpr(!is_host_le) {
         std::ranges::reverse(host);
@@ -66,6 +68,7 @@ inline constexpr T sendynetorder(Raw host) noexcept {
  */
 template<std::integral T>
 requires std::has_unique_object_representations_v<T>
+[[nodiscard]]
 inline constexpr array<byte, sizeof(T)> bytes(T val) noexcept {
     return std::bit_cast<array<byte, sizeof(T)>>(val);
 }
@@ -97,6 +100,7 @@ concept encodable = requires(T const& v) {
 
 /// Wrapper over `encoder<T>::read`
 template<encodable T>
+[[nodiscard]]
 constexpr inline std::pair<T, std::size_t> decode(std::span<byte> buf) {
     return encoder<T>::read(buf);
 }
@@ -119,6 +123,7 @@ constexpr inline std::vector<byte> encode(T const& val) noexcept {
 
 /** @brief Wrapper over `encoder<T>::encoded_sz` */
 template<encodable T>
+[[nodiscard]]
 constexpr inline std::size_t encoded_size(T const& val) noexcept {
     return encoder<T>::encoded_sz(val);
 }
@@ -259,17 +264,14 @@ struct encoder<T> {
     }
 
     static inline void write(T const& val, std::vector<byte>& buf) noexcept {
-        static const auto writer = [&](auto&... args) {(
+        static const auto writer = [&](auto&... args) {
             (
-                [&] {
-                    encode(args, buf);
-                }
-            )(), ...
-        );};
+                (encode(args, buf)), ...
+            );
+        };
 
         const_cast<T&>(val).encode(writer);
     }
-private:
 };
 
 }
